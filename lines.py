@@ -1,5 +1,5 @@
 import cv2
-import numpy
+import numpy as np
 import sys
 
 def nothing(x):
@@ -21,7 +21,7 @@ def longestContour(contours):
     return longest
 
 while True:
-    cap = cv2.VideoCapture('test3.mp4')
+    cap = cv2.VideoCapture('test2.mp4')
     while(cap.isOpened()):
         start = cv2.getTickCount()
         ret, frame = cap.read()
@@ -39,14 +39,29 @@ while True:
             continue
         edges = cv2.Canny(black, cannyLow, cannyHigh)
         # edges = cv2.Laplacian(black, cv2.CV_8U, 5)
-        # lines = cv2.HoughLinesP(edges, 1, numpy.pi / 180, hughThreshold, hughMinLength, hughMaxGap)
+        # lines = cv2.HoughLinesP(edges, 1, np.pi / 180, hughThreshold, hughMinLength, hughMaxGap)
         _, contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         out = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-        # cont = longestContour(contours)
-        # hull = cv2.convexHull(cont)
-        cv2.drawContours(out, contours, -1, (0,0,255), 2)
-        rect = cv2.minAreaRect(numpy.vstack(contours))
-        box = numpy.int0(cv2.boxPoints(rect))
+        # longestC = longestContour(contours)
+        allC = np.vstack(contours)
+        hull = cv2.convexHull(allC)
+        cv2.drawContours(out, [hull], 0, (0,0,255), 2)
+        # corners = []
+        # for i in range(1, len(hull)-1):
+        #     prev = hull[i-1]
+        #     p = hull[i]
+        #     next = hull[i+1]
+        #     ab = p - prev
+        #     bc = np.transpose(next - p)
+        #     angle = np.rad2deg(np.arccos(float(np.dot(ab, bc)) /
+        #                                  (np.linalg.norm(ab) * np.linalg.norm(bc))))
+        #     print(prev, p, next, ab, bc, angle)
+        #     if abs(angle - 90) < 40:
+        #         corners.append(p)
+        #         cv2.circle(out, (p[0][0], p[0][1]), 10, (0,255,0), 2)
+
+        rect = cv2.minAreaRect(np.vstack(contours))
+        box = np.int0(cv2.boxPoints(rect))
         im = cv2.drawContours(out,[box],0,(0,255,0),2)
 
         fps = cv2.getTickFrequency() / (cv2.getTickCount() - start)

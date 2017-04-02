@@ -29,8 +29,13 @@ def capture(q, stop, resolution=(640,480), framerate=30):
 
 def process(q, stop):
     print('Start processing...')
-    # cv2.namedWindow('video', cv2.WINDOW_NORMAL)
-    out = cv2.VideoWriter('output.avi',cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (640,480))
+    cv2.namedWindow('video', cv2.WINDOW_NORMAL)
+    def nothing(x):
+        pass
+    cv2.createTrackbar('threshold', 'video', 35, 255, nothing)
+    cv2.createTrackbar('cannyLow', 'video', 50, 255, nothing)
+    cv2.createTrackbar('cannyHigh', 'video', 150, 255, nothing)
+    video = cv2.VideoWriter('output.avi',cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (640,480))
     while not stop.is_set():
         start = cv2.getTickCount()
         frame = None
@@ -40,18 +45,27 @@ def process(q, stop):
         except queue.Empty:
             if frame is None:
                 continue
+
+            threshold = cv2.getTrackbarPos('threshold','video')
+            cannyLow = cv2.getTrackbarPos('cannyLow','video')
+            cannyHigh = cv2.getTrackbarPos('cannyHigh','video')
+
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            ret, black = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY)
+            gray = gray[0:200, 0:320]
+            ret, black = cv2.adaptiveThreshold(gray, threshold, 255, cv2.THRESH_BINARY)
             if not ret:
                 continue
-            edges = cv2.Canny(black, 50, 150)
-            _, contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            rect = cv2.minAreaRect(np.vstack(contours))
-            print(rect)
-            out.write(frame)
-            # cv2.imshow('video', gray)
-            # if cv2.waitKey(1) & 0xFF == ord('q'):
-            #     break
+            edges = cv2.Canny(black, cannyLow, cannyHigh)
+            # _, contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # out = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+            # cv2.drawContours(out, contours, -1, (0,0,255), 2)
+            # rect = cv2.minAreaRect(np.vstack(contours))
+            # print(rect)
+            # cv2.drawContours(out, [np.int0(cv2.boxPoints(rect))], 0, (0,255,0), 2)
+            # video.write(out)
+            cv2.imshow('video', edges)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
         fps =  (cv2.getTickCount() - start) / cv2.getTickFrequency() * 1000
         print('process: ' + str(fps))
     # cv2.destroyAllWindows()
