@@ -27,12 +27,26 @@ def capture(q, stop, resolution=(640,480), framerate=30):
     print('Capturing done')
     q.cancel_join_thread()
 
+
+def order_points(pts):
+    rect = np.zeros((4, 2), dtype = "float32")
+
+    s = pts.sum(axis = 1)
+    rect[0] = pts[np.argmin(s)]
+    rect[2] = pts[np.argmax(s)]
+
+    diff = np.diff(pts, axis = 1)
+    rect[1] = pts[np.argmin(diff)]
+    rect[3] = pts[np.argmax(diff)]
+    return rect
+
 def process(q, stop):
     print('Start processing...')
-    cv2.namedWindow('video', cv2.WINDOW_NORMAL)
+    M = np.load('M.npy')
     def nothing(x):
         pass
-    cv2.createTrackbar('threshold', 'video', 35, 255, nothing)
+    cv2.namedWindow('video', cv2.WINDOW_NORMAL)
+    cv2.createTrackbar('threshold', 'video', 58, 255, nothing)
     cv2.createTrackbar('cannyLow', 'video', 50, 255, nothing)
     cv2.createTrackbar('cannyHigh', 'video', 150, 255, nothing)
     video = cv2.VideoWriter('output.avi',cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (640,480))
@@ -51,24 +65,34 @@ def process(q, stop):
             cannyHigh = cv2.getTrackbarPos('cannyHigh','video')
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            gray = gray[0:200, 0:320]
-            ret, black = cv2.adaptiveThreshold(gray, threshold, 255, cv2.THRESH_BINARY)
+            ret, black = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
             if not ret:
                 continue
             edges = cv2.Canny(black, cannyLow, cannyHigh)
-            # _, contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            # out = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-            # cv2.drawContours(out, contours, -1, (0,0,255), 2)
-            # rect = cv2.minAreaRect(np.vstack(contours))
-            # print(rect)
-            # cv2.drawContours(out, [np.int0(cv2.boxPoints(rect))], 0, (0,255,0), 2)
+            _, contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not contours:
+                continue
+            out = frame.copy()
+            allC = np.vstack(contours)
+            hull = cv2.convexHull(allC)
+            cv2.drawContours(out, [hull], 0, (0,0,255), 2)
+            rect = cv2.minAreaRect(allC)
+            box = np.int0(cv2.boxPoints(rect))
+            im = cv2.drawContours(out,[box],0,(0,255,0),2)
+
+            corners = order_points(box)
+            dst = np.array([[0, 0],
+                            [639, 0],
+                            [639, 479],
+                            [0, 479]], dtype = "float32")
+            M = cv2.getPerspectiveTransform(corners, dst)
+            np.save("M", M)
             # video.write(out)
-            cv2.imshow('video', edges)
+            cv2.imshow('video', out)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         fps =  (cv2.getTickCount() - start) / cv2.getTickFrequency() * 1000
         print('process: ' + str(fps))
-    # cv2.destroyAllWindows()
     print('Processing done')
 
 def main():
