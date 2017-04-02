@@ -13,16 +13,19 @@ def capture(q, stop, resolution=(640,480), framerate=30):
         with picamera.array.PiRGBArray(camera, size=resolution) as raw:
             start = cv2.getTickCount()
             for frame in camera.capture_continuous(raw, format="bgr", use_video_port=True):
-                raw.truncate(0)
+                print('got frame')
                 try:
                     q.put(frame.array, False)
                 except queue.Full:
                     print('capture: full')
+                raw.truncate(0)
                 fps = cv2.getTickFrequency() / (cv2.getTickCount() - start)
                 print('capture: ' + str(fps))
                 start = cv2.getTickCount()
                 if stop.is_set():
-                    return
+                    break
+                print('loop')
+    print('Capturing done')
 
 def process(q, stop):
     print('Start processing...')
@@ -35,12 +38,13 @@ def process(q, stop):
             time.sleep(0.1)
         else:
             #cv2.imshow('video', frame)
+            # if cv2.waitKey(1) & 0xFF == ord('q'):
+            #     break
             time.sleep(0.03) # simulate 30ms processing
             fps = cv2.getTickFrequency() / (cv2.getTickCount() - start)
             print('process: ' + str(fps))
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
     cv2.destroyAllWindows()
+    print('Processing done')
 
 def main():
     q = mp.Queue(10)
@@ -55,7 +59,9 @@ def main():
 
     print('Shutdown')
     stop.set()
-    # p.join()
+    q.close()
+    q.join_thread()
+    p.join() # TODO locks up
 
 if __name__ == "__main__":
     main()
