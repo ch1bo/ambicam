@@ -41,7 +41,6 @@ while True:
         # edges = cv2.Laplacian(black, cv2.CV_8U, 5)
         # lines = cv2.HoughLinesP(edges, 1, numpy.pi / 180, hughThreshold, hughMinLength, hughMaxGap)
         _, contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # Intersect (naiive) and draw lines
         out = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
         # cont = longestContour(contours)
         # hull = cv2.convexHull(cont)
