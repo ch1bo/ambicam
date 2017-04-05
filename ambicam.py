@@ -1,9 +1,8 @@
-import base64
-import cv2
 import json
 import numpy as np
 import picamera
 import picamera.array
+import signal
 import socket
 import sys
 import time
@@ -19,6 +18,13 @@ res = np.load('res.npy')
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect((HOST, PORT))
+
+def sigint(signal, frame):
+    data = json.dumps({'command': 'clearall'}) + '\n'
+    s.sendall(data.encode('utf-8'))
+    s.close()
+signal.signal(signal.SIGINT, sigint)
+
 with picamera.PiCamera(resolution=RESOLUTION, framerate=FRAMERATE) as camera:
     camera.video_denoise = False
     print('awb_mode: ', camera.awb_mode)
@@ -86,7 +92,3 @@ with picamera.PiCamera(resolution=RESOLUTION, framerate=FRAMERATE) as camera:
             print('digital_gain: ', camera.digital_gain)
             print('awb_gains: ', camera.awb_gains)
             start = time.perf_counter()
-
-data = json.dumps({'command': 'clearall'}) + '\n'
-s.sendall(data.encode('utf-8'))
-s.close()
