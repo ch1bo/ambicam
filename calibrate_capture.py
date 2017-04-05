@@ -64,6 +64,7 @@ def process(q, stop):
             cannyLow = cv2.getTrackbarPos('cannyLow','video')
             cannyHigh = cv2.getTrackbarPos('cannyHigh','video')
 
+            frame = frame[:300, :320]
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             ret, black = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
             if not ret:
