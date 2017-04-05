@@ -20,18 +20,32 @@ res = np.load('res.npy')
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect((HOST, PORT))
 with picamera.PiCamera(resolution=RESOLUTION, framerate=FRAMERATE) as camera:
+    camera.video_denoise = False
+    print('awb_mode: ', camera.awb_mode)
+    print('brightness: ', camera.brightness)
+    print('contrast: ', camera.contrast)
+    print('exposure_mode: ', camera.exposure_mode)
+    print('exposure_speed: ', camera.exposure_speed)
+    print('iso: ', camera.iso)
+    print('saturation: ', camera.saturation)
+    print('sensor_mode: ', camera.sensor_mode)
+    print('sharpness: ', camera.sharpness)
+    print('shutter_speed: ', camera.shutter_speed)
+    print('video_denoise: ', camera.video_denoise)
+    print('video_stabilization: ', camera.video_stabilization)
+    print('zoom: ', camera.zoom)
     with picamera.array.PiRGBArray(camera, size=RESOLUTION) as raw:
         time.sleep(2)
         start = cv2.getTickCount()
         for frame in camera.capture_continuous(raw, format="rgb", use_video_port=True):
             img = frame.array
             raw.seek(0)
-            #warped = cv2.warpPerspective(frame.array, M, (width,height))
             # TODO use configured areas from hypercon
             width = res[0]
             height = res[1]
             offset = 5
             colors = []
+            # TODO stack calculation
             # bottom center -> bottom left
             for i in range(19):
                 col = (width/2)-i*(width/2-offset)/19
@@ -64,11 +78,13 @@ with picamera.PiCamera(resolution=RESOLUTION, framerate=FRAMERATE) as camera:
                 'color': colors
             }) + '\n').encode('utf-8')
             print('encoded: ' + str((cv2.getTickCount() - start) / cv2.getTickFrequency()))
-            a = cv2.getTickCount()
             s.send(data)
-            print('sent: ' + str((cv2.getTickCount() - a) / cv2.getTickFrequency()))
+            print('sent: ' + str((cv2.getTickCount() - start) / cv2.getTickFrequency()))
             fps = cv2.getTickFrequency() / (cv2.getTickCount() - start)
-            print('FPS: ' + str(fps))
+            print('FPS: ', fps)
+            print('analog_gain: ', camera.analog_gain)
+            print('digital_gain: ', camera.digital_gain)
+            print('awb_gains: ', camera.awb_gains)
             start = cv2.getTickCount()
 
 data = json.dumps({'command': 'clearall'}) + '\n'
