@@ -12,7 +12,7 @@ PRIORITY = 90
 HOST = '192.168.1.104'
 PORT = 19444
 RESOLUTION = (640,480)
-FRAMERATE = 18
+FRAMERATE = 20
 M = np.load('M.npy')
 M_ = np.linalg.inv(M)
 res = np.load('res.npy')
@@ -36,56 +36,56 @@ with picamera.PiCamera(resolution=RESOLUTION, framerate=FRAMERATE) as camera:
     print('zoom: ', camera.zoom)
     with picamera.array.PiRGBArray(camera, size=RESOLUTION) as raw:
         time.sleep(2)
-        start = cv2.getTickCount()
+        start = time.perf_counter()
         for frame in camera.capture_continuous(raw, format="rgb", use_video_port=True):
             img = frame.array
             raw.seek(0)
+            capture = time.perf_counter()
+            print('capture:', capture - start)
             # TODO use configured areas from hypercon
             width = res[0]
             height = res[1]
             offset = 5
-            colors = []
-            # TODO stack calculation
+            # Determine dst coordinates
+            dst = []
             # bottom center -> bottom left
             for i in range(19):
                 col = (width/2)-i*(width/2-offset)/19
-                x_, y_, _ = np.dot(M_, [col, height-offset, 1])
-                colors.extend(img[y_][x_].tolist())
+                dst.append([col, height-offset, 1])
             # bottom left -> top left
             for i in range(20):
                 row = (height-offset)-i*(height-2*offset)/20
-                x_, y_, _ = np.dot(M_, [offset, row, 1])
-                colors.extend(img[y_][x_].tolist())
+                dst.append([offset, row, 1])
             # top left -> top right
             for i in range(36):
                 col = offset+i*(width-2*offset)/36
-                x_, y_, _ = np.dot(M_, [col, offset, 1])
-                colors.extend(img[y_][x_].tolist())
+                dst.append([col, offset, 1])
             # top left -> bottom left
             for i in range(20):
                 row = offset+i*(height-2*offset)/20
-                x_, y_, _ = np.dot(M_, [offset, row, 1])
-                colors.extend(img[y_][x_].tolist())
+                dst.append([offset, row, 1])
             # bottom right -> bottom center
             for i in range(17):
                 col = (width-offset)-i*(width/2-offset)/17
-                x_, y_, _ = np.dot(M_, [col, height-offset, 1])
-                colors.extend(img[y_][x_].tolist())
-            print('converted: ' + str((cv2.getTickCount() - start) / cv2.getTickFrequency()))
+                dst.append([col, height-offset, 1])
+            # Convert to src coordinates and extract colors
+            src = np.dot(M_, np.array(dst).T).T
+            colors = []
+            for x, y, _ in src:
+                colors.extend(img[y][x].tolist())
+            warp = time.perf_counter()
+            print('warp:', warp - capture)
             data = (json.dumps({
                 'command': 'color',
                 'priority': PRIORITY,
                 'color': colors
             }) + '\n').encode('utf-8')
-            print('encoded: ' + str((cv2.getTickCount() - start) / cv2.getTickFrequency()))
             s.send(data)
-            print('sent: ' + str((cv2.getTickCount() - start) / cv2.getTickFrequency()))
-            fps = cv2.getTickFrequency() / (cv2.getTickCount() - start)
-            print('FPS: ', fps)
+            print('FPS: ', 1 / (time.perf_counter() - start))
             print('analog_gain: ', camera.analog_gain)
             print('digital_gain: ', camera.digital_gain)
             print('awb_gains: ', camera.awb_gains)
-            start = cv2.getTickCount()
+            start = time.perf_counter()
 
 data = json.dumps({'command': 'clearall'}) + '\n'
 s.sendall(data.encode('utf-8'))
