@@ -13,7 +13,7 @@ PORT = 19444
 PRIORITY = 90
 RESOLUTION = (640,480)
 FRAMERATE = 45
-OFFSET = 10
+OFFSET = 5
 M = np.load('M.npy')
 width, height = np.load('res.npy')
 
@@ -54,25 +54,37 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         # Determine colors
         colors = []
         # bottom center -> bottom left
+        half_width = self.width/2
         for i in range(19):
-            col = (self.width/2)-i*(self.width/2-self.offset)/19
-            colors.extend(bottom[self.offset/2, col].tolist())
+            col_end = half_width - i*half_width/19
+            col_start = col_end - half_width/19
+            rgb = bottom[:,col_start:col_end]
+            colors.extend([np.mean(rgb[0]), np.mean(rgb[1]), np.mean(rgb[2])])
         # bottom left -> top left
         for i in range(20):
-            row = (self.height-self.offset)-i*(self.height-2*self.offset)/20
-            colors.extend(left[row, self.offset/2].tolist())
+            row_end = self.height - i*self.height/20
+            row_start = row_end - self.height/20
+            rgb = left[row_start:row_end,:]
+            colors.extend([np.mean(rgb[0]), np.mean(rgb[1]), np.mean(rgb[2])])
         # top left -> top right
         for i in range(36):
-            col = self.offset+i*(self.width-2*self.offset)/36
-            colors.extend(top[self.offset/2, col].tolist())
+            col_start = i*self.width/36
+            col_end = col_start + self.width/36
+            rgb = top[:,col_start:col_end]
+            colors.extend([np.mean(rgb[0]), np.mean(rgb[1]), np.mean(rgb[2])])
         # top left -> bottom left
         for i in range(20):
-            row = self.offset+i*(self.height-2*self.offset)/20
-            colors.extend(left[row, self.offset/2].tolist())
-            # bottom right -> bottom center
+            row_start = i*self.height/20
+            row_end = row_start + self.height/20
+            rgb = right[row_start:row_end,:]
+            colors.extend([np.mean(rgb[0]), np.mean(rgb[1]), np.mean(rgb[2])])
+        # bottom right -> bottom center
         for i in range(17):
-            col = (self.width-self.offset)-i*(self.width/2-self.offset)/17
-            colors.extend(bottom[self.offset/2, col].tolist())
+            col_end = (self.width-self.offset)-i*half_width/17
+            col_start = col_end - half_width/17
+            rgb = bottom[:,col_start:col_end]
+            colors.extend([np.mean(rgb[0]), np.mean(rgb[1]), np.mean(rgb[2])])
+        print(colors)
         warp = time.perf_counter()
         print('warp:', warp - capture)
         data = (json.dumps({
