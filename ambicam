@@ -87,15 +87,16 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         }) + '\n').encode('utf-8')
         self.sock.send(data)
         print('FPS: ', 1 / (time.perf_counter() - self.start))
-        print('analog_gain: ', self.camera.analog_gain)
-        print('digital_gain: ', self.camera.digital_gain)
-        print('awb_gains: ', self.camera.awb_gains)
         self.start = time.perf_counter()
 
 def main():
     parser = argparse.ArgumentParser(description='AmbiCam runtime')
-    parser.add_argument('-a', '--awb_mode', dest='awb_mode', default='auto',
+    parser.add_argument('-a', '--awb-mode', dest='awb_mode', default='auto',
                         help='automatic white balance mode')
+    parser.add_argument('--awb-gain-red', dest='awb_gain_red', type=float, default=1.52,
+                        help='automatic white balance gain for red (only in mode: auto)')
+    parser.add_argument('--awb-gain-blue', dest='awb_gain_blue', type=float, default=1.00,
+                        help='automatic white balance gain for blue (only in mode: auto)')
     options = parser.parse_args()
 
     M = np.load('M.npy')
@@ -112,6 +113,7 @@ def main():
 
     with picamera.PiCamera(resolution=RESOLUTION, framerate=FRAMERATE) as camera:
         camera.awb_mode = options.awb_mode
+        camera.awb_gains = (options.awb_gain_red, options.awb_gain_blue)
         with HyperionOutput(camera, sock, M, width, height, offset=OFFSET) as output:
             camera.start_recording(output, 'rgb')
             try:
