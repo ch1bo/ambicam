@@ -43,13 +43,13 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         capture = time.perf_counter()
         # Warp image map-by-map
         top = cv2.blur(cv2.remap(img, self.top_map[0], self.top_map[1],
-                                 cv2.INTER_LINEAR).reshape(self.offset,self.width,3), (5,5))
+                                 cv2.INTER_LINEAR).reshape(self.offset,self.width,3), (10,10))
         left = cv2.blur(cv2.remap(img, self.left_map[0], self.left_map[1],
-                                  cv2.INTER_LINEAR).reshape(self.height,self.offset,3), (5,5))
+                                  cv2.INTER_LINEAR).reshape(self.height,self.offset,3), (10,10))
         right = cv2.blur(cv2.remap(img, self.right_map[0], self.right_map[1],
-                                   cv2.INTER_LINEAR).reshape(self.height,self.offset,3), (5,5))
+                                   cv2.INTER_LINEAR).reshape(self.height,self.offset,3), (10,10))
         bottom = cv2.blur(cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
-                                    cv2.INTER_LINEAR).reshape(self.offset,self.width,3), (5,5))
+                                    cv2.INTER_LINEAR).reshape(self.offset,self.width,3), (10,10))
         # TODO use means and areas from hyperion
         # Determine colors
         colors = []
