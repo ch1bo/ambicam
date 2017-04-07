@@ -42,14 +42,14 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
     def analyze(self, img):
         capture = time.perf_counter()
         # Warp image map-by-map
-        top = cv2.remap(img, self.top_map[0], self.top_map[1],
-                        cv2.INTER_LINEAR).reshape(self.offset,self.width,3)
-        left = cv2.remap(img, self.left_map[0], self.left_map[1],
-                         cv2.INTER_LINEAR).reshape(self.height,self.offset,3)
-        right = cv2.remap(img, self.right_map[0], self.right_map[1],
-                          cv2.INTER_LINEAR).reshape(self.height,self.offset,3)
-        bottom = cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
-                           cv2.INTER_LINEAR).reshape(self.offset,self.width,3)
+        top = cv2.blur(cv2.remap(img, self.top_map[0], self.top_map[1],
+                                 cv2.INTER_LINEAR).reshape(self.offset,self.width,3), (5,5))
+        left = cv2.blur(cv2.remap(img, self.left_map[0], self.left_map[1],
+                                  cv2.INTER_LINEAR).reshape(self.height,self.offset,3), (5,5))
+        right = cv2.blur(cv2.remap(img, self.right_map[0], self.right_map[1],
+                                   cv2.INTER_LINEAR).reshape(self.height,self.offset,3), (5,5))
+        bottom = cv2.blur(cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
+                                    cv2.INTER_LINEAR).reshape(self.offset,self.width,3), (5,5))
         # TODO use means and areas from hyperion
         # Determine colors
         colors = []
@@ -74,10 +74,8 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
             colors.extend([np.mean(rgb[0]), np.mean(rgb[1]), np.mean(rgb[2])])
         # top left -> bottom left
         for i in range(20):
-            row_start = i*self.height/20
-            row_end = row_start + self.height/20
-            rgb = right[row_start:row_end,:]
-            colors.extend([np.mean(rgb[0]), np.mean(rgb[1]), np.mean(rgb[2])])
+            row = self.offset+i*(self.height-2*self.offset)/20
+            colors.extend(right[row, self.offset/2].tolist())
         # bottom right -> bottom center
         for i in range(17):
             col_end = (self.width-self.offset)-i*half_width/17
