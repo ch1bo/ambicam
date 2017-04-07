@@ -6,64 +6,73 @@ import signal
 import socket
 import sys
 import time
+import cv2
 
-PRIORITY = 90
 HOST = '192.168.1.104'
 PORT = 19444
+PRIORITY = 90
 RESOLUTION = (640,480)
-FRAMERATE = 30
+FRAMERATE = 45
+OFFSET = 10
 M = np.load('M.npy')
-M_ = np.linalg.inv(M)
-res = np.load('res.npy')
+width, height = np.load('res.npy')
 
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect((HOST, PORT))
-
-def sigint(signal, frame):
-    data = json.dumps({'command': 'clearall'}) + '\n'
-    s.sendall(data.encode('utf-8'))
-    s.close()
-signal.signal(signal.SIGINT, sigint)
+def compute_map(M_inv, x, y, width, height):
+    coords = []
+    for j in range(int(y), int(y+height)):
+        for i in range(int(x), int(x+width)):
+            coords.append([i, j, 1])
+    return np.dot(M_inv, np.array(coords).T).astype('float32')
 
 class HyperionOutput(picamera.array.PiRGBAnalysis):
-    def __init__(self, camera):
+    def __init__(self, camera, M, width, height, offset=10):
         super(HyperionOutput, self).__init__(camera)
-        self.start = time.perf_counter()
+        self.M_inv = np.linalg.inv(M)
+        self.width = int(width)
+        self.height = int(height)
+        self.offset = offset
+        # Calculate source image maps
+        self.top_map = compute_map(self.M_inv, 0, 0, width, offset)
+        self.left_map = compute_map(self.M_inv, 0, 0, offset, height)
+        self.right_map = compute_map(self.M_inv, width-offset, 0, offset, height)
+        self.bottom_map = compute_map(self.M_inv, 0, height-offset, width, offset)
+        # TODO cv2.convertMaps to make them fix-point -> faster?
+        self.start= time.perf_counter()
 
     def analyze(self, img):
         capture = time.perf_counter()
-        print('capture:', capture - self.start)
-        # TODO use configured areas from hypercon
-        width = res[0]
-        height = res[1]
-        offset = 5
-        # Determine dst coordinates
-        dst = []
+        # Warp image map-by-map
+        top = cv2.remap(img, self.top_map[0], self.top_map[1],
+                        cv2.INTER_LINEAR).reshape(self.offset,self.width,3)
+        left = cv2.remap(img, self.left_map[0], self.left_map[1],
+                         cv2.INTER_LINEAR).reshape(self.height,self.offset,3)
+        right = cv2.remap(img, self.right_map[0], self.right_map[1],
+                          cv2.INTER_LINEAR).reshape(self.height,self.offset,3)
+        bottom = cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
+                           cv2.INTER_LINEAR).reshape(self.offset,self.width,3)
+        # TODO use means and areas from hyperion
+        # Determine colors
+        colors = []
         # bottom center -> bottom left
         for i in range(19):
-            col = (width/2)-i*(width/2-offset)/19
-            dst.append([col, height-offset, 1])
+            col = (self.width/2)-i*(self.width/2-self.offset)/19
+            colors.extend(bottom[self.offset/2, col].tolist())
         # bottom left -> top left
         for i in range(20):
-            row = (height-offset)-i*(height-2*offset)/20
-            dst.append([offset, row, 1])
-            # top left -> top right
+            row = (self.height-self.offset)-i*(self.height-2*self.offset)/20
+            colors.extend(left[row, self.offset/2].tolist())
+        # top left -> top right
         for i in range(36):
-            col = offset+i*(width-2*offset)/36
-            dst.append([col, offset, 1])
-            # top left -> bottom left
+            col = self.offset+i*(self.width-2*self.offset)/36
+            colors.extend(top[self.offset/2, col].tolist())
+        # top left -> bottom left
         for i in range(20):
-            row = offset+i*(height-2*offset)/20
-            dst.append([offset, row, 1])
+            row = self.offset+i*(self.height-2*self.offset)/20
+            colors.extend(left[row, self.offset/2].tolist())
             # bottom right -> bottom center
         for i in range(17):
-            col = (width-offset)-i*(width/2-offset)/17
-            dst.append([col, height-offset, 1])
-        # Convert to src coordinates and extract colors
-        src = np.dot(M_, np.array(dst).T).T
-        colors = []
-        for x, y, _ in src:
-            colors.extend(img[y][x].tolist())
+            col = (self.width-self.offset)-i*(self.width/2-self.offset)/17
+            colors.extend(bottom[self.offset/2, col].tolist())
         warp = time.perf_counter()
         print('warp:', warp - capture)
         data = (json.dumps({
@@ -78,22 +87,19 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         print('awb_gains: ', camera.awb_gains)
         self.start = time.perf_counter()
 
+
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.connect((HOST, PORT))
+
+def sigint(signal, frame):
+    data = json.dumps({'command': 'clearall'}) + '\n'
+    s.sendall(data.encode('utf-8'))
+    s.close()
+    sys.exit(0)
+signal.signal(signal.SIGINT, sigint)
+
 with picamera.PiCamera(resolution=RESOLUTION, framerate=FRAMERATE) as camera:
-    camera.video_denoise = False
-    print('awb_mode: ', camera.awb_mode)
-    print('brightness: ', camera.brightness)
-    print('contrast: ', camera.contrast)
-    print('exposure_mode: ', camera.exposure_mode)
-    print('exposure_speed: ', camera.exposure_speed)
-    print('iso: ', camera.iso)
-    print('saturation: ', camera.saturation)
-    print('sensor_mode: ', camera.sensor_mode)
-    print('sharpness: ', camera.sharpness)
-    print('shutter_speed: ', camera.shutter_speed)
-    print('video_denoise: ', camera.video_denoise)
-    print('video_stabilization: ', camera.video_stabilization)
-    print('zoom: ', camera.zoom)
-    with HyperionOutput(camera) as output:
+    with HyperionOutput(camera, M, width, height, offset=OFFSET) as output:
         camera.start_recording(output, 'rgb')
         try:
             while True:

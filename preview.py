@@ -13,7 +13,6 @@ M = np.load('M.npy')
 width, height = np.load('res.npy')
 
 def compute_map(M_inv, x, y, width, height):
-    print('map', x, y, width, height)
     coords = []
     for j in range(int(y), int(y+height)):
         for i in range(int(x), int(x+width)):
