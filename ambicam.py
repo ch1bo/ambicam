@@ -59,7 +59,7 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         for i in range(17):
             col = (width-offset)-i*(width/2-offset)/17
             dst.append([col, height-offset, 1])
-            # Convert to src coordinates and extract colors
+        # Convert to src coordinates and extract colors
         src = np.dot(M_, np.array(dst).T).T
         colors = []
         for x, y, _ in src:
