@@ -51,7 +51,7 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         warped[:self.offset,:] += top
         warped[self.offset:-self.offset,:self.offset] += left
         warped[self.offset:-self.offset,self.width-self.offset:] += right
-        warped[self.height-self.offset:,:] += top
+        warped[self.height-self.offset:,:] += bottom
         cv2.imshow('warped', warped)
         if cv2.waitKey(100) & 0xFF == ord("q"):
             self.finished.set()
