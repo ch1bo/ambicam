@@ -65,6 +65,7 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
             print('warp:', warp - capture)
         if not self.options.nosend:
             # Extract and send colors
+            # TODO twice as expensive as remap + blur!!
             # TODO use led geometry from hyperion
             colors  = []
             for i in range(19): # bottom center -> bottom left
@@ -126,7 +127,7 @@ def print_camera_info(camera):
     print('--- Camera info ---')
     print('analog_gain: ', float(camera.analog_gain))
     print('awb_mode: ', camera.awb_mode)
-    print('awb_gains: ', camera.awb_gains)
+    print('awb_gains: %f %f' % camera.awb_gains)
     print('brightness: ', camera.brightness)
     print('contrast: ', camera.contrast)
     print('digital_gain: ', float(camera.digital_gain))
@@ -167,11 +168,11 @@ def main():
                         help='print profiling info like fps of processing loop')
     parser.add_argument('--camera-info', dest='camera_info', action='store_true',
                         help='print camera info')
-    parser.add_argument('--awb-mode', dest='awb_mode', default='off',
+    parser.add_argument('--awb-mode', dest='awb_mode', default='auto',
                         help='automatic white balance mode')
-    parser.add_argument('--awb-gain-red', dest='awb_gain_red', type=float, default=1.2,
+    parser.add_argument('--awb-gain-red', dest='awb_gain_red', type=float, default=1.4,
                         help='automatic white balance gain for red (only in mode: auto)')
-    parser.add_argument('--awb-gain-blue', dest='awb_gain_blue', type=float, default=0.95,
+    parser.add_argument('--awb-gain-blue', dest='awb_gain_blue', type=float, default=1.3,
                         help='automatic white balance gain for blue (only in mode: auto)')
     parser.add_argument('--iso', dest='iso', type=int, default=0,
                         help='light sensitivity')
@@ -181,6 +182,10 @@ def main():
                         help='target shutter speed in microseconds')
     parser.add_argument('--meter-mode', dest='meter_mode', default='backlit',
                         help='area used to calculate exposure')
+    parser.add_argument('--brightness', type=int, default=50,
+                        help='image brightness')
+    parser.add_argument('--saturation', type=int, default=-30,
+                        help='image saturation')
     options = parser.parse_args()
 
     calibration = load_calibration(options.calibration)
@@ -200,11 +205,13 @@ def main():
     with picamera.PiCamera(resolution=calibration['source'], framerate=FRAMERATE) as camera:
         camera.awb_mode = options.awb_mode
         camera.awb_gains = (options.awb_gain_red, options.awb_gain_blue)
-        camera.iso = options.iso
+        camera.brightness = options.brightness
         if options.exposure_mode != 'off':
             camera.exposure_mode = options.exposure_mode
-        camera.shutter_speed = options.shutter_speed
+        camera.iso = options.iso
         camera.meter_mode = options.meter_mode
+        camera.saturation = options.saturation
+        camera.shutter_speed = options.shutter_speed
         camera.video_denoise = False
         with HyperionOutput(camera,
                             sock,
