@@ -5,6 +5,7 @@ import json
 import numpy as np
 import picamera
 import picamera.array
+import pickle
 import signal
 import socket
 import sys
@@ -25,22 +26,20 @@ def compute_map(M_inv, x, y, width, height):
     return np.dot(M_inv, np.array(coords).T).astype('float32')
 
 class HyperionOutput(picamera.array.PiRGBAnalysis):
-    def __init__(self, camera, sock, options, calibration, offset=10):
+    def __init__(self, camera, sock, options, M, width, height, offset=10):
         super(HyperionOutput, self).__init__(camera)
         self.sock = sock
         self.options = options
-        self.calibration = calibration
-
-        M_inv = np.linalg.inv(calibration.matrix)
-        self.width = width = int(calibration.dst_res[0])
-        self.height = height = int(calibration.dst_res[1])
+        self.width = int(width)
+        self.height = int(height)
         self.offset = offset
         # Calculate source image maps
         # TODO(SN): calculate corners only on top/bottom?
-        self.top_map = compute_map(self.M_inv, 0, 0, width, offset)
-        self.left_map = compute_map(self.M_inv, 0, 0, offset, height)
-        self.right_map = compute_map(self.M_inv, width-offset, 0, offset, height)
-        self.bottom_map = compute_map(self.M_inv, 0, height-offset, width, offset)
+        M_inv = np.linalg.inv(M)
+        self.top_map = compute_map(M_inv, 0, 0, width, offset)
+        self.left_map = compute_map(M_inv, 0, 0, offset, height)
+        self.right_map = compute_map(M_inv, width-offset, 0, offset, height)
+        self.bottom_map = compute_map(M_inv, 0, height-offset, width, offset)
         self.start= time.perf_counter()
         if self.options.preview:
             cv2.namedWindow('input', cv2.WINDOW_NORMAL)
@@ -125,12 +124,12 @@ def hyperion_clearall(sock):
 
 def print_camera_info(camera):
     print('--- Camera info ---')
-    print('analog_gain: ', camera.analog_gain)
+    print('analog_gain: ', float(camera.analog_gain))
     print('awb_mode: ', camera.awb_mode)
     print('awb_gains: ', camera.awb_gains)
     print('brightness: ', camera.brightness)
     print('contrast: ', camera.contrast)
-    print('digital_gain: ', camera.digital_gain)
+    print('digital_gain: ', float(camera.digital_gain))
     print('drc_strength: ', camera.drc_strength)
     print('exposure_compensation: ', camera.exposure_compensation)
     print('exposure_mode: ', camera.exposure_mode)
@@ -149,6 +148,11 @@ def load_calibration(path):
     with open(path, 'rb') as file:
         return pickle.load(file)
 
+def print_calibration(c):
+    print('source resolution: ', c['source'])
+    print('target resolution: ', c['target'])
+    print('transformation:\n', c['matrix'])
+
 def main():
     parser = argparse.ArgumentParser(description='AmbiCam runtime')
     parser.add_argument('-c', '--calibration', default='ambicam.calib',
@@ -165,9 +169,9 @@ def main():
                         help='print camera info')
     parser.add_argument('--awb-mode', dest='awb_mode', default='off',
                         help='automatic white balance mode')
-    parser.add_argument('--awb-gain-red', dest='awb_gain_red', type=float, default=1.1,
+    parser.add_argument('--awb-gain-red', dest='awb_gain_red', type=float, default=1.2,
                         help='automatic white balance gain for red (only in mode: auto)')
-    parser.add_argument('--awb-gain-blue', dest='awb_gain_blue', type=float, default=0.9,
+    parser.add_argument('--awb-gain-blue', dest='awb_gain_blue', type=float, default=0.95,
                         help='automatic white balance gain for blue (only in mode: auto)')
     parser.add_argument('--iso', dest='iso', type=int, default=0,
                         help='light sensitivity')
@@ -180,8 +184,11 @@ def main():
     options = parser.parse_args()
 
     calibration = load_calibration(options.calibration)
+    print('loaded calibration:')
+    print_calibration(calibration)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((HOST, PORT))
+    print('connected to %s:%s' % (HOST, PORT))
 
     def sigint(signal, frame):
         if not options.nosend:
@@ -190,7 +197,7 @@ def main():
         sys.exit(0)
     signal.signal(signal.SIGINT, sigint)
 
-    with picamera.PiCamera(resolution=calibration.src_res, framerate=FRAMERATE) as camera:
+    with picamera.PiCamera(resolution=calibration['source'], framerate=FRAMERATE) as camera:
         camera.awb_mode = options.awb_mode
         camera.awb_gains = (options.awb_gain_red, options.awb_gain_blue)
         camera.iso = options.iso
@@ -199,7 +206,13 @@ def main():
         camera.shutter_speed = options.shutter_speed
         camera.meter_mode = options.meter_mode
         camera.video_denoise = False
-        with HyperionOutput(camera, sock, options, calibration, offset=OFFSET) as output:
+        with HyperionOutput(camera,
+                            sock,
+                            options,
+                            calibration['matrix'],
+                            calibration['target'][0],
+                            calibration['target'][1],
+                            offset=OFFSET) as output:
             camera.start_recording(output, 'rgb')
             try:
                 while True:

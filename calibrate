@@ -33,6 +33,11 @@ def save_calibration(c, path):
     with open(path, 'wb') as file:
         pickle.dump(c, file)
 
+def print_calibration(c):
+    print('source resolution: ', c['source'])
+    print('target resolution: ', c['target'])
+    print('transformation:\n', c['matrix'])
+
 def main():
     parser = argparse.ArgumentParser(description='AmbiCam calibration utility')
     parser.add_argument('image', help='input image file')
@@ -48,12 +53,13 @@ def main():
     height = min(np.linalg.norm(corners[0] - corners[3]),
                 np.linalg.norm(corners[1] - corners[2]))
     dst = np.array([[0, 0],
-                    [width, 0],
-                    [width, height],
-                    [0, height]], dtype=np.float32)
+                    [width-1, 0],
+                    [width-1, height-1],
+                    [0, height-1]], dtype=np.float32)
     M = cv2.getPerspectiveTransform(corners, dst)
-    c = dict(matrix=M, dst_res=(width,height), src_res=(image.shape[1], image.shape[0]))
+    c = dict(matrix=M, target=(width,height), source=(image.shape[1], image.shape[0]))
     save_calibration(c, options.calibration)
+    print_calibration(c)
 
 if __name__ == '__main__':
     main()
