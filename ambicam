@@ -40,70 +40,118 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         self.right_map = compute_map(self.M_inv, width-offset, 0, offset, height)
         self.bottom_map = compute_map(self.M_inv, 0, height-offset, width, offset)
         self.start= time.perf_counter()
-
         if self.options.preview:
-            cv2.namedWindow('input', cv2.WINDOW_GUI_EXPANDED)
+            cv2.namedWindow('input', cv2.WINDOW_NORMAL)
             cv2.namedWindow('warped', cv2.WINDOW_GUI_EXPANDED)
 
     def analyze(self, img):
         capture = time.perf_counter()
         # Warp image map-by-map
-        top = cv2.GaussianBlur(cv2.remap(img, self.top_map[0], self.top_map[1],
+        top = cv2.blur(cv2.remap(img, self.top_map[0], self.top_map[1],
                                      cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
-                               (5,5), 3)
-        left = cv2.GaussianBlur(cv2.remap(img, self.left_map[0], self.left_map[1],
+                       (5,5))
+        left = cv2.blur(cv2.remap(img, self.left_map[0], self.left_map[1],
                                       cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
-                                (5,5), 3)
-        right = cv2.GaussianBlur(cv2.remap(img, self.right_map[0], self.right_map[1],
+                        (5,5))
+        right = cv2.blur(cv2.remap(img, self.right_map[0], self.right_map[1],
                                        cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
-                                 (5,5), 3)
-        bottom = cv2.GaussianBlur(cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
+                         (5,5))
+        bottom = cv2.blur(cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
                                         cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
-                                  (5,5), 3)
-        # Determine colors
-        # TODO use led geometry from hyperion
-        colors = []
-        for i in range(19): # bottom center -> bottom left
-            col = (self.width/2)-i*(self.width/2-self.offset)/19
-            colors.extend(reversed(bottom[self.offset/2, col].tolist()))
-        for i in range(20): # bottom left -> top left
-            row = (self.height-self.offset)-i*(self.height-2*self.offset)/20
-            colors.extend(reversed(left[row, self.offset/2].tolist()))
-        for i in range(36): # top left -> top right
-            col = self.offset+i*(self.width-2*self.offset)/36
-            colors.extend(reversed(top[self.offset/2, col].tolist()))
-        for i in range(20): # top left -> bottom left
-            row = self.offset+i*(self.height-2*self.offset)/20
-            colors.extend(reversed(right[row, self.offset/2].tolist()))
-        for i in range(17): # bottom right -> bottom center
-            col = (self.width-self.offset)-i*(self.width/2-self.offset)/17
-            colors.extend(reversed(bottom[self.offset/2, col].tolist()))
-        warp = time.perf_counter()
-        print('warp:', warp - capture)
-        data = (json.dumps({
-            'command': 'color',
-            'priority': PRIORITY,
-            'color': colors
-        }) + '\n').encode('utf-8')
-        self.sock.send(data)
+                          (5,5))
+        if self.options.profile:
+            warp = time.perf_counter()
+            print('warp:', warp - capture)
+        if not self.options.nosend:
+            # Extract and send colors
+            # TODO use led geometry from hyperion
+            colors  = []
+            for i in range(19): # bottom center -> bottom left
+                col = (self.width/2)-i*(self.width/2-self.offset)/19
+                colors.extend(bottom[self.offset/2, col].tolist())
+            for i in range(20): # bottom left -> top left
+                row = (self.height-self.offset)-i*(self.height-2*self.offset)/20
+                colors.extend(left[row, self.offset/2].tolist())
+            for i in range(36): # top left -> top right
+                col = self.offset+i*(self.width-2*self.offset)/36
+                colors.extend(top[self.offset/2, col].tolist())
+            for i in range(20): # top left -> bottom left
+                row = self.offset+i*(self.height-2*self.offset)/20
+                colors.extend(right[row, self.offset/2].tolist())
+            for i in range(17): # bottom right -> bottom center
+                col = (self.width-self.offset)-i*(self.width/2-self.offset)/17
+                colors.extend(bottom[self.offset/2, col].tolist())
+            if self.options.profile:
+                extract = time.perf_counter()
+                print('extract:', extract - warp)
+            hyperion_color(self.sock, PRIORITY, colors)
+            if self.options.profile:
+                send = time.perf_counter()
+                print('send:', send - warp)
+        img_rgb = None
+        if self.options.output:
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(self.options.output, img_rgb)
         if self.options.preview:
+            if img_rgb is None:
+                img_rgb = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            cv2.imshow('input', img_rgb)
             # Stitch and preview
-            cv2.imshow('input', img)
             warped = np.zeros((self.height, self.width, 3), dtype='uint8')
             warped[:self.offset,:] += top
             warped[self.offset:-self.offset,:self.offset] += left[self.offset:-self.offset,:]
             warped[self.offset:-self.offset,self.width-self.offset:] += right[self.offset:-self.offset,:]
             warped[self.height-self.offset:,:] += bottom
-            cv2.imshow('warped', warped)
+            warped_rgb = cv2.cvtColor(warped, cv2.COLOR_RGB2BGR)
+            cv2.imshow('warped', warped_rgb)
             cv2.waitKey(100)
-        print('FPS: ', 1 / (time.perf_counter() - self.start))
+        if self.options.profile:
+            print('FPS: ', 1 / (time.perf_counter() - self.start))
         self.start = time.perf_counter()
+
+def hyperion_color(sock, priority, colors):
+    cmd = json.dumps({
+        'command': 'color',
+        'priority': priority,
+        'color': colors
+    }) + '\n'
+    sock.sendall(cmd.encode('utf-8'))
+
+def hyperion_clearall(sock):
+    cmd = json.dumps({'command': 'clearall'}) + '\n'
+    sock.sendall(cmd.encode('utf-8'))
+
+def print_camera_info(camera):
+    print('analog_gain: ', camera.analog_gain)
+    print('awb_mode: ', camera.awb_mode)
+    print('awb_gains: ', camera.awb_gains)
+    print('brightness: ', camera.brightness)
+    print('contrast: ', camera.contrast)
+    print('digital_gain: ', camera.digital_gain)
+    print('exposure_mode: ', camera.exposure_mode)
+    print('exposure_speed: ', camera.exposure_speed)
+    print('iso: ', camera.iso)
+    print('saturation: ', camera.saturation)
+    print('sensor_mode: ', camera.sensor_mode)
+    print('sharpness: ', camera.sharpness)
+    print('shutter_speed: ', camera.shutter_speed)
+    print('video_denoise: ', camera.video_denoise)
+    print('video_stabilization: ', camera.video_stabilization)
+    print('zoom: ', camera.zoom)
 
 def main():
     parser = argparse.ArgumentParser(description='AmbiCam runtime')
+    parser.add_argument('-n', '--nosend', dest='nosend', action='store_true',
+                        help='disable color extraction and sending')
     parser.add_argument('-p', '--preview', dest='preview', action='store_true',
                         help='show captured and warped images (slow!)')
-    parser.add_argument('-a', '--awb-mode', dest='awb_mode', default='auto',
+    parser.add_argument('-o', '--output', dest='output',
+                        help='save captured image to file')
+    parser.add_argument('--profile', dest='profile', action='store_true',
+                        help='print profiling info like fps of processing loop')
+    parser.add_argument('--camera-info', dest='camera_info', action='store_true',
+                        help='print camera info')
+    parser.add_argument('--awb-mode', dest='awb_mode', default='off',
                         help='automatic white balance mode')
     parser.add_argument('--awb-gain-red', dest='awb_gain_red', type=float, default=1.52,
                         help='automatic white balance gain for red (only in mode: auto)')
@@ -117,8 +165,8 @@ def main():
     sock.connect((HOST, PORT))
 
     def sigint(signal, frame):
-        data = json.dumps({'command': 'clearall'}) + '\n'
-        sock.sendall(data.encode('utf-8'))
+        if not options.nosend:
+            hyperion_clearall(sock)
         sock.close()
         sys.exit(0)
     signal.signal(signal.SIGINT, sigint)
@@ -127,10 +175,12 @@ def main():
         camera.awb_mode = options.awb_mode
         camera.awb_gains = (options.awb_gain_red, options.awb_gain_blue)
         with HyperionOutput(camera, sock, options, M, width, height, offset=OFFSET) as output:
-            camera.start_recording(output, 'bgr')
+            camera.start_recording(output, 'rgb')
             try:
                 while True:
                     camera.wait_recording(1)
+                    if options.camera_info:
+                        print_camera_info(camera)
             finally:
                 camera.stop_recording()
 
