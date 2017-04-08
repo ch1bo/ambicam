@@ -1,0 +1,59 @@
+#!/usr/bin/python
+from ast import literal_eval
+import argparse
+import cv2
+import numpy as np
+import pickle
+
+def order_corners(corners):
+    rect = np.zeros((4, 2), dtype=np.float32)
+    s = corners.sum(axis = 1)
+    rect[0] = corners[np.argmin(s)]
+    rect[2] = corners[np.argmax(s)]
+    diff = np.diff(corners, axis = 1)
+    rect[1] = corners[np.argmin(diff)]
+    rect[3] = corners[np.argmax(diff)]
+    return rect
+
+class ParseCoords(argparse.Action):
+    def __init__(self, option_strings, dest, nargs=None, **kwargs):
+        if nargs is not None:
+            raise ValueError("nargs not allowed")
+        super(ParseCoords, self).__init__(option_strings, dest, **kwargs)
+    def __call__(self, parser, namespace, values, option_string=None):
+        strings = values.split(' ')
+        if (len(strings) != 4):
+            raise ValueError("more than 4 tuples found, make sure there are no spaces inside")
+        coords = []
+        for c in map(literal_eval, strings):
+            coords.append(c)
+        setattr(namespace, self.dest, order_corners(np.array(coords)))
+
+def save_calibration(c, path):
+    with open(path, 'wb') as file:
+        pickle.dump(c, file)
+
+def main():
+    parser = argparse.ArgumentParser(description='AmbiCam calibration utility')
+    parser.add_argument('image', help='input image file')
+    parser.add_argument('corners', action=ParseCoords,
+                        help='coordinates of screen corners, each as (x,y) tuple')
+    parser.add_argument('-c', '--calibration', default='ambicam.calib',
+                        help='path to store the calibration result')
+    options = parser.parse_args()
+    image = cv2.imread(options.image)
+    corners = options.corners
+    width = min(np.linalg.norm(corners[0] - corners[1]),
+                np.linalg.norm(corners[2] - corners[3]))
+    height = min(np.linalg.norm(corners[0] - corners[3]),
+                np.linalg.norm(corners[1] - corners[2]))
+    dst = np.array([[0, 0],
+                    [width, 0],
+                    [width, height],
+                    [0, height]], dtype=np.float32)
+    M = cv2.getPerspectiveTransform(corners, dst)
+    c = dict(matrix=M, dst_res=(width,height), src_res=(image.shape[1], image.shape[0]))
+    save_calibration(c, options.calibration)
+
+if __name__ == '__main__':
+    main()

@@ -10,10 +10,10 @@ import socket
 import sys
 import time
 
+# TODO make configurable
 HOST = '192.168.1.104'
 PORT = 19444
 PRIORITY = 90
-RESOLUTION = (640,480)
 FRAMERATE = 45
 OFFSET = 10
 
@@ -25,13 +25,15 @@ def compute_map(M_inv, x, y, width, height):
     return np.dot(M_inv, np.array(coords).T).astype('float32')
 
 class HyperionOutput(picamera.array.PiRGBAnalysis):
-    def __init__(self, camera, sock, options, M, width, height, offset=10):
+    def __init__(self, camera, sock, options, calibration, offset=10):
         super(HyperionOutput, self).__init__(camera)
         self.sock = sock
         self.options = options
-        self.M_inv = np.linalg.inv(M)
-        self.width = int(width)
-        self.height = int(height)
+        self.calibration = calibration
+
+        M_inv = np.linalg.inv(calibration.matrix)
+        self.width = width = int(calibration.dst_res[0])
+        self.height = height = int(calibration.dst_res[1])
         self.offset = offset
         # Calculate source image maps
         # TODO(SN): calculate corners only on top/bottom?
@@ -122,25 +124,35 @@ def hyperion_clearall(sock):
     sock.sendall(cmd.encode('utf-8'))
 
 def print_camera_info(camera):
+    print('--- Camera info ---')
     print('analog_gain: ', camera.analog_gain)
     print('awb_mode: ', camera.awb_mode)
     print('awb_gains: ', camera.awb_gains)
     print('brightness: ', camera.brightness)
     print('contrast: ', camera.contrast)
     print('digital_gain: ', camera.digital_gain)
+    print('drc_strength: ', camera.drc_strength)
+    print('exposure_compensation: ', camera.exposure_compensation)
     print('exposure_mode: ', camera.exposure_mode)
     print('exposure_speed: ', camera.exposure_speed)
     print('iso: ', camera.iso)
+    print('meter_mode', camera.meter_mode)
+    print('resolution', camera.resolution)
     print('saturation: ', camera.saturation)
     print('sensor_mode: ', camera.sensor_mode)
     print('sharpness: ', camera.sharpness)
     print('shutter_speed: ', camera.shutter_speed)
     print('video_denoise: ', camera.video_denoise)
     print('video_stabilization: ', camera.video_stabilization)
-    print('zoom: ', camera.zoom)
+
+def load_calibration(path):
+    with open(path, 'rb') as file:
+        return pickle.load(file)
 
 def main():
     parser = argparse.ArgumentParser(description='AmbiCam runtime')
+    parser.add_argument('-c', '--calibration', default='ambicam.calib',
+                        help='path to calibration')
     parser.add_argument('-n', '--nosend', dest='nosend', action='store_true',
                         help='disable color extraction and sending')
     parser.add_argument('-p', '--preview', dest='preview', action='store_true',
@@ -153,22 +165,21 @@ def main():
                         help='print camera info')
     parser.add_argument('--awb-mode', dest='awb_mode', default='off',
                         help='automatic white balance mode')
-    parser.add_argument('--awb-gain-red', dest='awb_gain_red', type=float, default=1.52,
+    parser.add_argument('--awb-gain-red', dest='awb_gain_red', type=float, default=1.1,
                         help='automatic white balance gain for red (only in mode: auto)')
-    parser.add_argument('--awb-gain-blue', dest='awb_gain_blue', type=float, default=1.00,
+    parser.add_argument('--awb-gain-blue', dest='awb_gain_blue', type=float, default=0.9,
                         help='automatic white balance gain for blue (only in mode: auto)')
     parser.add_argument('--iso', dest='iso', type=int, default=0,
                         help='light sensitivity')
-    parser.add_argument('--exposure-mode', dest='exposure_mode', default='off',
+    parser.add_argument('--exposure-mode', dest='exposure_mode', default='backlight',
                         help='automatic exposure adjustment mode')
     parser.add_argument('--shutter-speed', dest='shutter_speed', type=int, default=0,
                         help='target shutter speed in microseconds')
-    parser.add_argument('--meter-mode', dest='meter_mode', default='average',
+    parser.add_argument('--meter-mode', dest='meter_mode', default='backlit',
                         help='area used to calculate exposure')
     options = parser.parse_args()
 
-    M = np.load('M.npy')
-    width, height = np.load('res.npy')
+    calibration = load_calibration(options.calibration)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((HOST, PORT))
 
@@ -179,7 +190,7 @@ def main():
         sys.exit(0)
     signal.signal(signal.SIGINT, sigint)
 
-    with picamera.PiCamera(resolution=RESOLUTION, framerate=FRAMERATE) as camera:
+    with picamera.PiCamera(resolution=calibration.src_res, framerate=FRAMERATE) as camera:
         camera.awb_mode = options.awb_mode
         camera.awb_gains = (options.awb_gain_red, options.awb_gain_blue)
         camera.iso = options.iso
@@ -188,17 +199,16 @@ def main():
         camera.shutter_speed = options.shutter_speed
         camera.meter_mode = options.meter_mode
         camera.video_denoise = False
-        with HyperionOutput(camera, sock, options, M, width, height, offset=OFFSET) as output:
+        with HyperionOutput(camera, sock, options, calibration, offset=OFFSET) as output:
             camera.start_recording(output, 'rgb')
             try:
                 while True:
-                    camera.wait_recording(0.5)
+                    camera.wait_recording(1)
                     if options.camera_info:
                         print_camera_info(camera)
                     # Delay exposure mode setting for 'off' to have gains >= 0
                     if options.exposure_mode == 'off' and camera.exposure_mode != 'off':
                         camera.exposure_mode = 'off'
-
             finally:
                 camera.stop_recording()
 
