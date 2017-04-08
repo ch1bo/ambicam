@@ -157,6 +157,14 @@ def main():
                         help='automatic white balance gain for red (only in mode: auto)')
     parser.add_argument('--awb-gain-blue', dest='awb_gain_blue', type=float, default=1.00,
                         help='automatic white balance gain for blue (only in mode: auto)')
+    parser.add_argument('--iso', dest='iso', type=int, default=0,
+                        help='light sensitivity')
+    parser.add_argument('--exposure-mode', dest='exposure_mode', default='off',
+                        help='automatic exposure adjustment mode')
+    parser.add_argument('--shutter-speed', dest='shutter_speed', type=int, default=0,
+                        help='target shutter speed in microseconds')
+    parser.add_argument('--meter-mode', dest='meter_mode', default='average',
+                        help='area used to calculate exposure')
     options = parser.parse_args()
 
     M = np.load('M.npy')
@@ -174,13 +182,23 @@ def main():
     with picamera.PiCamera(resolution=RESOLUTION, framerate=FRAMERATE) as camera:
         camera.awb_mode = options.awb_mode
         camera.awb_gains = (options.awb_gain_red, options.awb_gain_blue)
+        camera.iso = options.iso
+        if options.exposure_mode != 'off':
+            camera.exposure_mode = options.exposure_mode
+        camera.shutter_speed = options.shutter_speed
+        camera.meter_mode = options.meter_mode
+        camera.video_denoise = False
         with HyperionOutput(camera, sock, options, M, width, height, offset=OFFSET) as output:
             camera.start_recording(output, 'rgb')
             try:
                 while True:
-                    camera.wait_recording(1)
+                    camera.wait_recording(0.5)
                     if options.camera_info:
                         print_camera_info(camera)
+                    # Delay exposure mode setting for 'off' to have gains >= 0
+                    if options.exposure_mode == 'off' and camera.exposure_mode != 'off':
+                        camera.exposure_mode = 'off'
+
             finally:
                 camera.stop_recording()
 
