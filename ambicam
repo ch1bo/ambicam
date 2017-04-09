@@ -92,9 +92,6 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
                 extract = time.perf_counter()
                 print('extract:', extract - warp)
             hyperion_color(self.sock, PRIORITY, colors)
-            if self.options.profile:
-                send = time.perf_counter()
-                print('send:', send - warp)
         img_bgr = None
         if self.options.output:
             img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
