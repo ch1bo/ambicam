@@ -53,9 +53,9 @@ def main():
     height = min(np.linalg.norm(corners[0] - corners[3]),
                 np.linalg.norm(corners[1] - corners[2]))
     dst = np.array([[0, 0],
-                    [width-1, 0],
-                    [width-1, height-1],
-                    [0, height-1]], dtype=np.float32)
+                    [width, 0],
+                    [width, height],
+                    [0, height]], dtype=np.float32)
     M = cv2.getPerspectiveTransform(corners, dst)
     c = dict(matrix=M, target=(width,height), source=(image.shape[1], image.shape[0]))
     save_calibration(c, options.calibration)
