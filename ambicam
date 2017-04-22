@@ -29,19 +29,19 @@ def compute_led_map(width, height, offset):
     coords = []
     for i in range(19): # bottom center -> bottom left
         col = width/2-i*(width/2-offset)/19
-        coords.append((height-offset/2, col))
+        coords.append([height-offset/2, col])
     for i in range(20): # bottom left -> top left
         row = (height-offset)-i*(height-offset*2)/20
-        coords.append((row, offset/2))
+        coords.append([row, offset/2])
     for i in range(36): # top left -> top right
         col = offset+i*(width-offset*2)/36
-        coords.append((width-offset/2, col))
+        coords.append([offset/2, col])
     for i in range(20): # top right -> bottom right
         row = offset+i*(height-offset*2)/20
-        coords.append((row, width-offset/2))
+        coords.append([row, width-offset/2])
     for i in range(17): # bottom right -> bottom center
         col = (width-offset)-i*(width/2-offset)/17
-        coords.append((height-offset/2, col))
+        coords.append([height-offset/2, col])
     return np.array(coords, dtype=np.float32)
 
 class HyperionOutput(picamera.array.PiRGBAnalysis):
@@ -86,7 +86,7 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
             print('warp:', warp - capture)
         if not self.options.nosend:
             # Extract and send colors
-            colors = cv2.remap(self.warped, self.led_map[:,0], self.led_map[:,1], cv2.INTER_LINEAR)
+            colors = cv2.remap(self.warped, self.led_map[:,1], self.led_map[:,0], cv2.INTER_LINEAR)
             if self.options.profile:
                 extract = time.perf_counter()
                 print('extract:', extract - warp)
