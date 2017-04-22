@@ -17,12 +17,32 @@ PORT = 19444
 PRIORITY = 90
 OFFSET = 20
 
-def compute_map(M_inv, x, y, width, height):
+def compute_warp_map(M_inv, x, y, width, height):
     coords = []
     for j in np.arange(y, y+height):
         for i in np.arange(x, x+width):
             coords.append([i, j, 1])
     return np.dot(M_inv, np.array(coords).T).astype('float32')
+
+def led_map(width, height, offset):
+    # TODO use led geometry from hyperion
+    coords = []
+    for i in range(19): # bottom center -> bottom left
+        col = width/2-i*(width/2-offset)/19
+        coords.append((height-offset/2, col))
+    for i in range(20): # bottom left -> top left
+        row = (height-offset)-i*(height-offset*2)/20
+        coords.append((row, offset/2))
+    for i in range(36): # top left -> top right
+        col = offset+i*(width-offset*2)/36
+        coords.append((width-offset/2, col))
+    for i in range(20): # top right -> bottom right
+        row = offset+i*(height-offset*2)/20
+        coords.append((row, width-offset/2))
+    for i in range(17): # bottom right -> bottom center
+        col = (width-offset)-i*(width/2-offset)/17
+        coords.append((height-offset/2, col))
+    return np.array(coords, dtype=np.float32)
 
 class HyperionOutput(picamera.array.PiRGBAnalysis):
     def __init__(self, camera, sock, options, M, width, height, offset=10):
@@ -35,10 +55,11 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         # Calculate source image maps (corner areas are doubled for convenience)
         self.M_inv = np.linalg.inv(M)
         # TODO broken!?
-        # self.top_map = compute_map(M_inv, 0, 0, width, offset)
-        # self.left_map = compute_map(M_inv, 0, 0, offset, height)
-        # self.right_map = compute_map(M_inv, width-offset, 0, offset, height)
-        # self.bottom_map = compute_map(M_inv, 0, height-offset, width, offset)
+        # self.top_map = compute_warp_map(M_inv, 0, 0, width, offset)
+        # self.left_map = compute_warp_map(M_inv, 0, 0, offset, height)
+        # self.right_map = compute_warp_map(M_inv, width-offset, 0, offset, height)
+        # self.bottom_map = compute_warp_map(M_inv, 0, height-offset, width, offset)
+        self.led_map = led_map(width, height, offset)
         self.start= time.perf_counter()
         if self.options.preview:
             cv2.namedWindow('input', cv2.WINDOW_NORMAL)
@@ -49,19 +70,20 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         # Warp image map-by-map
         # TODO commented out method broken!?
         warped = cv2.warpPerspective(img, self.M_inv, (self.width, self.height), flags=cv2.WARP_INVERSE_MAP)
-        top = cv2.blur(warped[:self.offset,:], (31,31))
+        blurred = cv2.blur(warped, (31,31))
+        # top = cv2.blur(warped[:self.offset,:], (31,31))
         # top = cv2.blur(cv2.remap(img, self.top_map[0], self.top_map[1],
         #                              cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
         #                (31,31))
-        left = cv2.blur(warped[:,:self.offset], (31,31))
+        # left = cv2.blur(warped[:,:self.offset], (31,31))
         # left = cv2.blur(cv2.remap(img, self.left_map[0], self.left_map[1],
         #                               cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
         #                 (31,31))
-        right = cv2.blur(warped[:,-self.offset:], (31,31))
+        # right = cv2.blur(warped[:,-self.offset:], (31,31))
         # right = cv2.blur(cv2.remap(img, self.right_map[0], self.right_map[1],
         #                                cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
         #                  (31,31))
-        bottom = cv2.blur(warped[-self.offset:,:], (31,31))
+        # bottom = cv2.blur(warped[-self.offset:,:], (31,31))
         # bottom = cv2.blur(cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
         #                                 cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
         #                   (31,31))
@@ -70,33 +92,14 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
             print('warp:', warp - capture)
         if not self.options.nosend:
             # Extract and send colors
-            # TODO twice as expensive as remap + blur!!
-            # TODO use led geometry from hyperion
-            colors  = []
-            for i in range(19): # bottom center -> bottom left
-                col = (self.width/2)-i*(self.width/2-self.offset)/19
-                rgb = bottom[self.offset/2, col]
-                colors.extend(np.asarray(rgb, dtype=np.uint8).tolist())
-            for i in range(20): # bottom left -> top left
-                row = (self.height-self.offset)-i*(self.height-2*self.offset)/20
-                rgb = left[row, self.offset/2]
-                colors.extend(np.asarray(rgb, dtype=np.uint8).tolist())
-            for i in range(36): # top left -> top right
-                col = self.offset+i*(self.width-2*self.offset)/36
-                rgb = top[self.offset/2, col]
-                colors.extend(np.asarray(rgb, dtype=np.uint8).tolist())
-            for i in range(20): # top left -> bottom left
-                row = self.offset+i*(self.height-2*self.offset)/20
-                rgb = right[row, self.offset/2]
-                colors.extend(np.asarray(rgb, dtype=np.uint8).tolist())
-            for i in range(17): # bottom right -> bottom center
-                col = (self.width-self.offset)-i*(self.width/2-self.offset)/17
-                rgb = bottom[self.offset/2, col]
-                colors.extend(np.asarray(rgb, dtype=np.uint8).tolist())
+            colors = cv2.remap(blurred, self.led_map[:,0], self.led_map[:,1], cv2.INTER_LINEAR)
             if self.options.profile:
                 extract = time.perf_counter()
                 print('extract:', extract - warp)
-            hyperion_color(self.sock, PRIORITY, colors)
+            hyperion_color(self.sock, PRIORITY, colors.ravel().tolist())
+            if self.options.profile:
+                send = time.perf_counter()
+                print('send:', send - extract)
         img_bgr = None
         if self.options.output:
             img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
