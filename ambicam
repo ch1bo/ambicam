@@ -22,9 +22,9 @@ def compute_warp_map(M_inv, x, y, width, height):
     for j in np.arange(y, y+height):
         for i in np.arange(x, x+width):
             coords.append([i, j, 1])
-    return np.dot(M_inv, np.array(coords).T).astype('float32')
+    return np.dot(M_inv, np.array(coords).T).astype(np.float32)
 
-def led_map(width, height, offset):
+def compute_led_map(width, height, offset):
     # TODO use led geometry from hyperion
     coords = []
     for i in range(19): # bottom center -> bottom left
@@ -49,17 +49,18 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         super(HyperionOutput, self).__init__(camera)
         self.sock = sock
         self.options = options
-        self.width = width
-        self.height = height
+        self.width = np.ceil(width)
+        self.height = np.ceil(height)
         self.offset = offset
         # Calculate source image maps (corner areas are doubled for convenience)
-        self.M_inv = np.linalg.inv(M)
-        # TODO broken!?
-        # self.top_map = compute_warp_map(M_inv, 0, 0, width, offset)
-        # self.left_map = compute_warp_map(M_inv, 0, 0, offset, height)
-        # self.right_map = compute_warp_map(M_inv, width-offset, 0, offset, height)
-        # self.bottom_map = compute_warp_map(M_inv, 0, height-offset, width, offset)
-        self.led_map = led_map(width, height, offset)
+        M_inv = np.linalg.inv(M)
+        self.top_map = compute_warp_map(M_inv, 0, 0, width, offset)
+        self.left_map = compute_warp_map(M_inv, 0, 0, offset, height)
+        self.right_map = compute_warp_map(M_inv, width-offset, 0, offset, height)
+        self.bottom_map = compute_warp_map(M_inv, 0, height-offset, width, offset)
+        self.led_map = compute_led_map(width, height, offset)
+        # Reuse warped image
+        self.warped = np.zeros((self.height, self.width, 3), dtype=np.uint8)
         self.start= time.perf_counter()
         if self.options.preview:
             cv2.namedWindow('input', cv2.WINDOW_NORMAL)
@@ -68,30 +69,24 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
     def analyze(self, img):
         capture = time.perf_counter()
         # Warp image map-by-map
-        # TODO commented out method broken!?
-        warped = cv2.warpPerspective(img, self.M_inv, (self.width, self.height), flags=cv2.WARP_INVERSE_MAP)
-        warped[:self.offset,:] = cv2.blur(warped[:self.offset,:], (self.offset,self.offset))
-        # top = cv2.blur(cv2.remap(img, self.top_map[0], self.top_map[1],
-        #                              cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
-        #                (31,31))
-        warped[:,:self.offset] = cv2.blur(warped[:,:self.offset], (self.offset,self.offset))
-        # left = cv2.blur(cv2.remap(img, self.left_map[0], self.left_map[1],
-        #                               cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
-        #                 (31,31))
-        warped[:,-self.offset:] = cv2.blur(warped[:,-self.offset:], (self.offset,self.offset))
-        # right = cv2.blur(cv2.remap(img, self.right_map[0], self.right_map[1],
-        #                                cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
-        #                  (31,31))
-        warped[-self.offset:,:] = cv2.blur(warped[-self.offset:,:], (self.offset,self.offset))
-        # bottom = cv2.blur(cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
-        #                                 cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
-        #                   (31,31))
+        self.warped[:self.offset,:] = cv2.blur(cv2.remap(img, self.top_map[0], self.top_map[1],
+                                                    cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
+                                          (self.offset,self.offset))
+        self.warped[:,:self.offset] = cv2.blur(cv2.remap(img, self.left_map[0], self.left_map[1],
+                                                    cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
+                                          (self.offset,self.offset))
+        self.warped[:,-self.offset:] = cv2.blur(cv2.remap(img, self.right_map[0], self.right_map[1],
+                                                     cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
+                                           (self.offset,self.offset))
+        self.warped[-self.offset:,:] = cv2.blur(cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
+                                                     cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
+                                           (self.offset,self.offset))
         if self.options.profile:
             warp = time.perf_counter()
             print('warp:', warp - capture)
         if not self.options.nosend:
             # Extract and send colors
-            colors = cv2.remap(warped, self.led_map[:,0], self.led_map[:,1], cv2.INTER_LINEAR)
+            colors = cv2.remap(self.warped, self.led_map[:,0], self.led_map[:,1], cv2.INTER_LINEAR)
             if self.options.profile:
                 extract = time.perf_counter()
                 print('extract:', extract - warp)
@@ -107,13 +102,7 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
             if img_bgr is None:
                 img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             cv2.imshow('input', img_bgr)
-            # Stitch and preview
-            # warped = np.zeros((self.height, self.width, 3), dtype='uint8')
-            # warped[:self.offset,:] += top
-            # warped[self.offset:-self.offset,:self.offset] += left[self.offset:-self.offset,:]
-            # warped[self.offset:-self.offset,self.width-self.offset:] += right[self.offset:-self.offset,:]
-            # warped[self.height-self.offset:,:] += bottom
-            warped_bgr = cv2.cvtColor(warped, cv2.COLOR_RGB2BGR)
+            warped_bgr = cv2.cvtColor(self.warped, cv2.COLOR_RGB2BGR)
             cv2.imshow('warped', warped_bgr)
             cv2.waitKey(100)
         if self.options.profile:
