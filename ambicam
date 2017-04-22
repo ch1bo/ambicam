@@ -49,22 +49,22 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         # Warp image map-by-map
         # TODO commented out method broken!?
         warped = cv2.warpPerspective(img, self.M_inv, (self.width, self.height), flags=cv2.WARP_INVERSE_MAP)
-        top = cv2.blur(warped[:self.offset,:], (self.offset,self.offset))
+        top = cv2.blur(warped[:self.offset,:], (31,31))
         # top = cv2.blur(cv2.remap(img, self.top_map[0], self.top_map[1],
         #                              cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
-        #                (self.offset,self.offset))
-        left = cv2.blur(warped[:,:self.offset], (self.offset,self.offset))
+        #                (31,31))
+        left = cv2.blur(warped[:,:self.offset], (31,31))
         # left = cv2.blur(cv2.remap(img, self.left_map[0], self.left_map[1],
         #                               cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
-        #                 (self.offset,self.offset))
-        right = cv2.blur(warped[:,-self.offset:], (self.offset,self.offset))
+        #                 (31,31))
+        right = cv2.blur(warped[:,-self.offset:], (31,31))
         # right = cv2.blur(cv2.remap(img, self.right_map[0], self.right_map[1],
         #                                cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
-        #                  (self.offset,self.offset))
-        bottom = cv2.blur(warped[-self.offset:,:], (self.offset,self.offset))
+        #                  (31,31))
+        bottom = cv2.blur(warped[-self.offset:,:], (31,31))
         # bottom = cv2.blur(cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
         #                                 cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
-        #                   (self.offset,self.offset))
+        #                   (31,31))
         if self.options.profile:
             warp = time.perf_counter()
             print('warp:', warp - capture)
@@ -75,19 +75,24 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
             colors  = []
             for i in range(19): # bottom center -> bottom left
                 col = (self.width/2)-i*(self.width/2-self.offset)/19
-                colors.extend(bottom[self.offset/2, col].tolist())
+                rgb = bottom[self.offset/2, col]
+                colors.extend(np.asarray(rgb, dtype=np.uint8).tolist())
             for i in range(20): # bottom left -> top left
                 row = (self.height-self.offset)-i*(self.height-2*self.offset)/20
-                colors.extend(left[row, self.offset/2].tolist())
+                rgb = left[row, self.offset/2]
+                colors.extend(np.asarray(rgb, dtype=np.uint8).tolist())
             for i in range(36): # top left -> top right
                 col = self.offset+i*(self.width-2*self.offset)/36
-                colors.extend(top[self.offset/2, col].tolist())
+                rgb = top[self.offset/2, col]
+                colors.extend(np.asarray(rgb, dtype=np.uint8).tolist())
             for i in range(20): # top left -> bottom left
                 row = self.offset+i*(self.height-2*self.offset)/20
-                colors.extend(right[row, self.offset/2].tolist())
+                rgb = right[row, self.offset/2]
+                colors.extend(np.asarray(rgb, dtype=np.uint8).tolist())
             for i in range(17): # bottom right -> bottom center
                 col = (self.width-self.offset)-i*(self.width/2-self.offset)/17
-                colors.extend(bottom[self.offset/2, col].tolist())
+                rgb = bottom[self.offset/2, col]
+                colors.extend(np.asarray(rgb, dtype=np.uint8).tolist())
             if self.options.profile:
                 extract = time.perf_counter()
                 print('extract:', extract - warp)
