@@ -8,6 +8,7 @@ Scripts for extracting LED Colors for "AmbiLight"-Clones using a RaspberryPi and
 
 * Use Hyperion LED geometry (from config)
 * Fix / re-enable custom warping of the border regions
+* Automatic calibration using OpenCV and controlling leds
 * Configurable border, offset, blurring and mean calculations
 * Proper blackborder detection
 
