@@ -211,37 +211,38 @@ def main():
         sock.close()
         sys.exit(0)
     signal.signal(signal.SIGINT, sigint)
-    with picamera.PiCamera(resolution=resolution, framerate=options.framerate) as camera:
-        camera.awb_mode = options.awb_mode
-        camera.awb_gains = (options.awb_gain_red, options.awb_gain_blue)
-        camera.brightness = options.brightness
-        camera.contrast = options.contrast
-        if options.exposure_mode != 'off':
-            camera.exposure_mode = options.exposure_mode
-        camera.iso = options.iso
-        camera.meter_mode = options.meter_mode
-        camera.rotation = options.rotation
-        camera.saturation = options.saturation
-        camera.shutter_speed = options.shutter_speed
-        camera.video_denoise = False
-        with HyperionOutput(camera,
-                            sock,
-                            options,
-                            calibration['matrix'],
-                            calibration['target'][0],
-                            calibration['target'][1],
-                            offset=OFFSET) as output:
-            camera.start_recording(output, 'rgb')
-            try:
-                while True:
-                    camera.wait_recording(1)
-                    if options.camera_info:
-                        print_camera_info(camera)
-                    # Delay exposure mode setting for 'off' to have gains >= 0
-                    if options.exposure_mode == 'off' and camera.exposure_mode != 'off':
-                        camera.exposure_mode = 'off'
-            finally:
-                camera.stop_recording()
+    while True:
+        with picamera.PiCamera(resolution=resolution, framerate=options.framerate) as camera:
+            camera.awb_mode = options.awb_mode
+            camera.awb_gains = (options.awb_gain_red, options.awb_gain_blue)
+            camera.brightness = options.brightness
+            camera.contrast = options.contrast
+            if options.exposure_mode != 'off':
+                camera.exposure_mode = options.exposure_mode
+            camera.iso = options.iso
+            camera.meter_mode = options.meter_mode
+            camera.rotation = options.rotation
+            camera.saturation = options.saturation
+            camera.shutter_speed = options.shutter_speed
+            camera.video_denoise = False
+            with HyperionOutput(camera,
+                                sock,
+                                options,
+                                calibration['matrix'],
+                                calibration['target'][0],
+                                calibration['target'][1],
+                                offset=OFFSET) as output:
+                camera.start_recording(output, 'rgb')
+                try:
+                    while True:
+                        camera.wait_recording(1)
+                        if options.camera_info:
+                            print_camera_info(camera)
+                        # Delay exposure mode setting for 'off' to have gains >= 0
+                        if options.exposure_mode == 'off' and camera.exposure_mode != 'off':
+                            camera.exposure_mode = 'off'
+                finally:
+                    camera.stop_recording()
 
 if __name__ == '__main__':
     main()
