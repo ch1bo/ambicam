@@ -42,7 +42,7 @@ def main():
     parser = argparse.ArgumentParser(description='AmbiCam calibration utility')
     parser.add_argument('image', help='input image file')
     parser.add_argument('corners', action=ParseCoords,
-                        help='coordinates of screen corners, each as (x,y) tuple')
+                        help='coordinates of screen corners, each as (x,y) tuple, top-left, top-right, bottom-right and bottom left')
     parser.add_argument('-c', '--calibration', default='ambicam.calib',
                         help='path to store the calibration result')
     options = parser.parse_args()
