@@ -12,7 +12,7 @@ import sys
 import time
 
 # TODO make configurable
-HOST = '192.168.1.104'
+HOST = '192.168.1.101'
 PORT = 19444
 PRIORITY = 90
 OFFSET = 20
@@ -201,9 +201,6 @@ def main():
     print_calibration(calibration)
     if calibration['source'] != resolution:
         print('WARNING: calibrated resolution does not match capture resolution!')
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((HOST, PORT))
-    print('connected to %s:%s' % (HOST, PORT))
 
     def sigint(signal, frame):
         if not options.nosend:
@@ -212,6 +209,9 @@ def main():
         sys.exit(0)
     signal.signal(signal.SIGINT, sigint)
     while True:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((HOST, PORT))
+        print('connected to %s:%s' % (HOST, PORT))
         with picamera.PiCamera(resolution=resolution, framerate=options.framerate) as camera:
             camera.awb_mode = options.awb_mode
             camera.awb_gains = (options.awb_gain_red, options.awb_gain_blue)
@@ -241,8 +241,13 @@ def main():
                         # Delay exposure mode setting for 'off' to have gains >= 0
                         if options.exposure_mode == 'off' and camera.exposure_mode != 'off':
                             camera.exposure_mode = 'off'
+                except Exception as e:
+                    print(e)
                 finally:
-                    camera.stop_recording()
+                    try:
+                        camera.stop_recording()
+                    except Exception as e:
+                        print(e)
 
 if __name__ == '__main__':
     main()
