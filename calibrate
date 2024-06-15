@@ -6,6 +6,7 @@ import numpy as np
 import pickle
 
 def order_corners(corners):
+    print(corners)
     rect = np.zeros((4, 2), dtype=np.float32)
     s = corners.sum(axis = 1)
     rect[0] = corners[np.argmin(s)]
@@ -13,6 +14,7 @@ def order_corners(corners):
     diff = np.diff(corners, axis = 1)
     rect[1] = corners[np.argmin(diff)]
     rect[3] = corners[np.argmax(diff)]
+    print(rect)
     return rect
 
 class ParseCoords(argparse.Action):
@@ -42,7 +44,7 @@ def main():
     parser = argparse.ArgumentParser(description='AmbiCam calibration utility')
     parser.add_argument('image', help='input image file')
     parser.add_argument('corners', action=ParseCoords,
-                        help='coordinates of screen corners, each as (x,y) tuple, top-left, top-right, bottom-right and bottom left')
+                        help='coordinates of screen corners; top left, top right, bottom right and bottom left; each as (x,y) tuple')
     parser.add_argument('-c', '--calibration', default='ambicam.calib',
                         help='path to store the calibration result')
     options = parser.parse_args()
@@ -57,7 +59,7 @@ def main():
                     [width, height],
                     [0, height]], dtype=np.float32)
     M = cv2.getPerspectiveTransform(corners, dst)
-    c = dict(matrix=M, target=(width,height), source=(image.shape[1], image.shape[0]))
+    c = dict(matrix=M, target=(width,height), source=(image.shape[1], image.shape[0]), corners=corners)
     save_calibration(c, options.calibration)
     print_calibration(c)
 

@@ -12,10 +12,10 @@ import sys
 import time
 
 # TODO make configurable
-HOST = '192.168.1.101'
+HOST = 'ambilight'
 PORT = 19444
 PRIORITY = 90
-OFFSET = 20
+OFFSET = 50
 
 def compute_warp_map(M_inv, x, y, width, height):
     coords = []
@@ -45,15 +45,17 @@ def compute_led_map(width, height, offset):
     return np.array(coords, dtype=np.float32)
 
 class HyperionOutput(picamera.array.PiRGBAnalysis):
-    def __init__(self, camera, sock, options, M, width, height, offset=10):
+    def __init__(self, camera, sock, options, M, width, height, corners, offset=10):
         super(HyperionOutput, self).__init__(camera)
         self.sock = sock
         self.options = options
         self.width = np.ceil(width)
         self.height = np.ceil(height)
+        self.corners = corners
         self.offset = offset
         # Calculate source image maps (corner areas are doubled for convenience)
         M_inv = np.linalg.inv(M)
+        self.M_inv = M_inv
         self.top_map = compute_warp_map(M_inv, 0, 0, width, offset)
         self.left_map = compute_warp_map(M_inv, 0, 0, offset, height)
         self.right_map = compute_warp_map(M_inv, width-offset, 0, offset, height)
@@ -68,19 +70,22 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
 
     def analyze(self, img):
         capture = time.perf_counter()
+        # Warp full image
+        self.warped = cv2.warpPerspective(img, self.M_inv, (self.width, self.height), flags=cv2.WARP_INVERSE_MAP)
         # Warp image map-by-map
-        self.warped[:self.offset,:] = cv2.blur(cv2.remap(img, self.top_map[0], self.top_map[1],
-                                                    cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
-                                          (self.offset,self.offset))
-        self.warped[:,:self.offset] = cv2.blur(cv2.remap(img, self.left_map[0], self.left_map[1],
-                                                    cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
-                                          (self.offset,self.offset))
-        self.warped[:,-self.offset:] = cv2.blur(cv2.remap(img, self.right_map[0], self.right_map[1],
-                                                     cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
-                                           (self.offset,self.offset))
-        self.warped[-self.offset:,:] = cv2.blur(cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
-                                                     cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
-                                           (self.offset,self.offset))
+        # FIXME: warp-maps are off if source image is not very centered
+        # self.warped[:self.offset,:] = cv2.blur(cv2.remap(img, self.top_map[0], self.top_map[1],
+        #                                             cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
+        #                                   (self.offset,self.offset))
+        # self.warped[:,:self.offset] = cv2.blur(cv2.remap(img, self.left_map[0], self.left_map[1],
+        #                                             cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
+        #                                   (self.offset,self.offset))
+        # self.warped[:,-self.offset:] = cv2.blur(cv2.remap(img, self.right_map[0], self.right_map[1],
+        #                                              cv2.INTER_LINEAR).reshape(self.height,self.offset,3),
+        #                                    (self.offset,self.offset))
+        # self.warped[-self.offset:,:] = cv2.blur(cv2.remap(img, self.bottom_map[0], self.bottom_map[1],
+        #                                              cv2.INTER_LINEAR).reshape(self.offset,self.width,3),
+        #                                    (self.offset,self.offset))
         if self.options.profile:
             warp = time.perf_counter()
             print('warp:', warp - capture)
@@ -101,6 +106,8 @@ class HyperionOutput(picamera.array.PiRGBAnalysis):
         if self.options.preview:
             if img_bgr is None:
                 img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            for c in self.corners:
+                cv2.circle(img_bgr, tuple(c), 3, (0,0,255), -1)
             cv2.imshow('input', img_bgr)
             warped_bgr = cv2.cvtColor(self.warped, cv2.COLOR_RGB2BGR)
             cv2.imshow('warped', warped_bgr)
@@ -150,6 +157,7 @@ def print_calibration(c):
     print('source resolution: ', c['source'])
     print('target resolution: ', c['target'])
     print('transformation:\n', c['matrix'])
+    print('corners:', c['corners'])
 
 def main():
     parser = argparse.ArgumentParser(description='AmbiCam runtime', add_help=False)
@@ -231,6 +239,7 @@ def main():
                                 calibration['matrix'],
                                 calibration['target'][0],
                                 calibration['target'][1],
+                                calibration['corners'],
                                 offset=OFFSET) as output:
                 camera.start_recording(output, 'rgb')
                 try:
